@@ -1,15 +1,24 @@
 from llvmlite import ir
 
 class DeclarationCodegen:
+    def getTypeFromName(self, typeName):
+        if typeName in self.datatypes:
+            return self.datatypes[typeName]
+        elif typeName in self.classStructTypes:
+            return self.classStructTypes[typeName]
+        else:
+            raise ValueError("Unknown datatype: " + typeName)
+    
+    def handleArrayElementPtr(self, arrayAddr, index, name=""):
+        return self.builder.gep(arrayAddr, [
+            ir.Constant(ir.IntType(32), 0),
+            index
+        ], name=name)
+    
     def VarDecl(self, node):
         if node.datatypeName.endswith("[]"):
             baseTypeName = node.datatypeName[:-2]
-            if baseTypeName in self.datatypes:
-                elemType = self.datatypes[baseTypeName]
-            elif baseTypeName in self.classStructTypes:
-                elemType = self.classStructTypes[baseTypeName]
-            else:
-                raise ValueError("Unknown datatype: " + baseTypeName)
+            elemType = self.getTypeFromName(baseTypeName)
 
             if node.init and node.init.__class__.__name__ == "ArrayLiteral":
                 arrayLiteral = self.codegen(node.init)
@@ -25,16 +34,10 @@ class DeclarationCodegen:
                 }
 
                 for i in range(numElements):
-                    srcPtr = self.builder.gep(arrayLiteral, [
-                        ir.Constant(ir.IntType(32), 0),
-                        ir.Constant(ir.IntType(32), i)
-                    ], name=f"src_ptr_{i}")
-
-                    dstPtr = self.builder.gep(addr, [
-                        ir.Constant(ir.IntType(32), 0),
-                        ir.Constant(ir.IntType(32), i)
-                    ], name=f"dst_ptr_{i}")
-
+                    idx = ir.Constant(ir.IntType(32), i)
+                    srcPtr = self.handleArrayElementPtr(arrayLiteral, idx, f"src_ptr_{i}")
+                    dstPtr = self.handleArrayElementPtr(addr, idx, f"dst_ptr_{i}")
+                    
                     val = self.builder.load(srcPtr, name=f"elem_{i}")
                     self.builder.store(val, dstPtr)
 
@@ -52,44 +55,25 @@ class DeclarationCodegen:
                 }
                 return addr
 
-        if node.datatypeName in self.datatypes:
-            varType = self.datatypes[node.datatypeName]
-            addr = self.builder.alloca(varType, name=node.name)
-        elif node.datatypeName in self.classStructTypes:
-            structType = self.classStructTypes[node.datatypeName]
-            addr = self.builder.alloca(structType, name=node.name)
-        else:
-            raise ValueError("Unknown datatype: " + node.datatypeName)
+        varType = self.getTypeFromName(node.datatypeName)
+        addr = self.builder.alloca(varType, name=node.name)
 
         if node.init:
-            init_val = self.codegen(node.init)
-            
-            # Handle type conversions
-            if node.datatypeName == "float" and init_val.type == ir.IntType(32):
-                init_val = self.builder.sitofp(init_val, ir.FloatType())
-            else:
-                # Generic type conversion
-                init_val = self.convertValue(init_val, init_val.type, node.datatypeName)
-                
-            self.builder.store(init_val, addr)
+            initVal = self.codegen(node.init)
+            initVal = self.convertValue(initVal, initVal.type, node.datatypeName)
+            self.builder.store(initVal, addr)
 
         self.funcSymtab[node.name] = {"addr": addr, "datatypeName": node.datatypeName}
         return addr
 
     def ArrayDecl(self, node):
         elemTypeName = node.elemType
-        if elemTypeName in self.datatypes:
-            elemType = self.datatypes[elemTypeName]
-        elif elemTypeName in self.classStructTypes:
-            elemType = self.classStructTypes[elemTypeName]
-        else:
-            raise ValueError("Unknown element type: " + elemTypeName)
+        elemType = self.getTypeFromName(elemTypeName)
 
         sizeVal = None
         if node.size:
             sizeVal = self.codegen(node.size)
             if not isinstance(sizeVal, ir.Constant):
-
                 mallocFunc = self.getMallocFunc()
                 byteSize = self.builder.mul(sizeVal, ir.Constant(ir.IntType(32), 4), name="bytesize")
                 arrayPtr = self.builder.call(mallocFunc, [byteSize], name="arrayptr")
@@ -123,21 +107,25 @@ class DeclarationCodegen:
         structType = ir.global_context.get_identified_type(node.name)
         fieldTypes = []
         for field in node.fields:
-            if field.datatypeName in self.datatypes:
-                fieldTypes.append(self.datatypes[field.datatypeName])
-            elif field.datatypeName in self.classStructTypes:
-                fieldTypes.append(self.classStructTypes[field.datatypeName])
-            else:
-                raise ValueError("Unknown datatype: " + field.datatypeName)
+            fieldTypes.append(self.getTypeFromName(field.datatypeName))
 
         structType.set_body(*fieldTypes)
         self.classStructTypes[node.name] = structType
         for method in node.methods:
             self.MethodDecl(method)
 
+    def createFunctionType(self, returnTypeName, paramTypes):
+        if returnTypeName in self.datatypes:
+            returnType = self.datatypes[returnTypeName]
+        else:
+            returnType = ir.IntType(32)
+            
+        return ir.FunctionType(returnType, paramTypes)
+            
     def MethodDecl(self, node):
         if node.className not in self.classStructTypes:
             raise ValueError("Unknown class in method: " + node.className)
+            
         classType = self.classStructTypes[node.className]
         paramTypes = [ir.PointerType(classType)]
 
@@ -149,39 +137,41 @@ class DeclarationCodegen:
                 paramTypes.append(ir.PointerType(self.classStructTypes[dt]))
             else:
                 raise ValueError("Unknown datatype in method parameter: " + dt)
+                
         returnType = self.datatypes[node.returnType] if hasattr(node, "returnType") and node.returnType in self.datatypes else ir.IntType(32)
-
         funcType = ir.FunctionType(returnType, paramTypes)
+        
         funcName = f"{node.className}_{node.name}"
         if funcName in self.module.globals:
             return self.module.globals[funcName]
-        func = ir.Function(self.module, funcType, name=funcName)
-        entry = func.append_basic_block("entry")
-        self.builder = ir.IRBuilder(entry)
-        self.funcSymtab = {}
-        self.funcSymtab["self"] = {"addr": func.args[0], "datatypeName": node.className}
-        for i, param in enumerate(node.parameters, start=1):
-            self.funcSymtab[param.name] = {"addr": func.args[i], "datatypeName": param.datatypeName}
-        retval = None
-        for stmt in node.body:
-            retval = self.codegen(stmt)
-        if not self.builder.block.terminator:
-            self.builder.ret(retval if retval else ir.Constant(ir.IntType(32), 0))
+            
+        return self.defineFunction(funcName, funcType, ["self"] + [p.name for p in node.parameters], node.body)
 
     def Function(self, node):
         retTypeStr = node.returnType if hasattr(node, "returnType") else "int"
-        if retTypeStr in self.datatypes:
-            returnType = self.datatypes[retTypeStr]
-        else:
-            returnType = ir.IntType(32)
-
+        returnType = self.datatypes.get(retTypeStr, ir.IntType(32))
         funcType = ir.FunctionType(returnType, [])
-        func = ir.Function(self.module, funcType, name=node.name)
+        
+        return self.defineFunction(node.name, funcType, [], node.body)
+        
+    def defineFunction(self, name, funcType, paramNames, body):
+        func = ir.Function(self.module, funcType, name=name)
         entry = func.append_basic_block("entry")
         self.builder = ir.IRBuilder(entry)
         self.funcSymtab = {}
+        
+        for i, paramName in enumerate(paramNames):
+            if paramName == "self":
+                self.funcSymtab[paramName] = {"addr": func.args[i], "datatypeName": name.split("_")[0]}
+            else:
+                self.funcSymtab[paramName] = {"addr": func.args[i], "datatypeName": "param"}
+                
         retval = None
-        for stmt in node.body:
+        for stmt in body:
             retval = self.codegen(stmt)
+            
+        returnType = funcType.return_type
         if not self.builder.block.terminator:
-            self.builder.ret(retval if retval is not None else ir.Constant(returnType, 0)) 
+            self.builder.ret(retval if retval is not None else ir.Constant(returnType, 0))
+            
+        return func 

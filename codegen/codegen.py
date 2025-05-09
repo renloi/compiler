@@ -22,7 +22,7 @@ class Codegen(ExpressionCodegen, StatementCodegen, DeclarationCodegen):
         self.externalConstants = {}
         self.modules = {}
 
-    def registerExternalFunction(self, moduleName, funcName, cFuncName, returnType, paramTypes):
+    def initModule(self, moduleName):
         if moduleName not in self.modules:
             self.modules[moduleName] = {}
             
@@ -33,6 +33,10 @@ class Codegen(ExpressionCodegen, StatementCodegen, DeclarationCodegen):
             except (ImportError, AttributeError):
                 pass
             
+        return self.modules[moduleName]
+
+    def registerExternalFunction(self, moduleName, funcName, cFuncName, returnType, paramTypes):
+        self.initModule(moduleName)
         llvmReturnType = self.datatypes.get(returnType, ir.IntType(32))
         llvmParamTypes = []
         
@@ -45,7 +49,6 @@ class Codegen(ExpressionCodegen, StatementCodegen, DeclarationCodegen):
                 llvmParamTypes.append(ir.IntType(32))
                 
         funcType = ir.FunctionType(llvmReturnType, llvmParamTypes)
-        
         func = ir.Function(self.module, funcType, name=cFuncName)
         
         if moduleName not in self.externalFunctions:
@@ -57,16 +60,7 @@ class Codegen(ExpressionCodegen, StatementCodegen, DeclarationCodegen):
         return func
         
     def registerExternalConstant(self, moduleName, constName, cFuncName, constType):
-        if moduleName not in self.modules:
-            self.modules[moduleName] = {}
-            
-            try:
-                module = importlib.import_module(f"stdlib.{moduleName}.{moduleName}")
-                if hasattr(module, 'registerWithCodegen'):
-                    module.registerWithCodegen(self)
-            except (ImportError, AttributeError):
-                pass
-            
+        self.initModule(moduleName)
         llvmReturnType = self.datatypes.get(constType, ir.IntType(32))
         funcType = ir.FunctionType(llvmReturnType, [])
         
@@ -157,7 +151,6 @@ class Codegen(ExpressionCodegen, StatementCodegen, DeclarationCodegen):
         return self.mallocFunc
         
     def convertValue(self, value, sourceType, targetTypeName):
-        """Generic type conversion function that handles any type conversion defined by modules"""
         if targetTypeName == "float" and sourceType == ir.IntType(32):
             return self.builder.sitofp(value, ir.FloatType())
             

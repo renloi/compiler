@@ -14,10 +14,8 @@ class ExpressionCodegen:
         return ir.Constant(ir.FloatType(), float(node.value))
 
     def String(self, node):
-        # Check if quotes are already present in the node.value
         value = node.value
         if len(value) >= 2 and value[0] == '"' and value[-1] == '"':
-            # Remove quotes - they will be added back by createStringConstant
             value = value[1:-1]
         return self.createStringConstant(value)
 
@@ -39,6 +37,12 @@ class ExpressionCodegen:
             return self.builder.load(info["addr"], name=node.name)
         raise NameError("Undefined variable: " + node.name)
 
+    def handleFunctionArgs(self, func, args):
+        llvmArgs = []
+        for arg in args:
+            llvmArgs.append(self.codegen(arg))
+        return self.builder.call(func, llvmArgs)
+        
     def FunctionCall(self, node):
         if node.callee.__class__.__name__ == "Var":
             if node.callee.name == "print":
@@ -46,10 +50,7 @@ class ExpressionCodegen:
             func = self.module.get_global(node.callee.name)
             if not func:
                 raise NameError("Unknown function: " + node.callee.name)
-            llvmArgs = []
-            for arg in node.args:
-                llvmArgs.append(self.codegen(arg))
-            return self.builder.call(func, llvmArgs)
+            return self.handleFunctionArgs(func, node.args)
         elif node.callee.__class__.__name__ == "MemberAccess":
             if node.callee.objectExpr.__class__.__name__ == "Var":
                 moduleName = node.callee.objectExpr.name
@@ -57,11 +58,7 @@ class ExpressionCodegen:
                 
                 if moduleName in self.externalFunctions and functionName in self.externalFunctions[moduleName]:
                     func = self.externalFunctions[moduleName][functionName]
-                    llvmArgs = []
-                    for arg in node.args:
-                        argValue = self.codegen(arg)
-                        llvmArgs.append(argValue)
-                    return self.builder.call(func, llvmArgs)
+                    return self.handleFunctionArgs(func, node.args)
                 elif moduleName in self.externalConstants and functionName in self.externalConstants[moduleName]:
                     func = self.externalConstants[moduleName][functionName]
                     return self.builder.call(func, [])
@@ -83,64 +80,54 @@ class ExpressionCodegen:
         else:
             raise SyntaxError("Invalid function call callee.")
 
+    def formatPrintValue(self, val, i, args, fmtParts, llvmArgs):
+        directlyPrinted = False
+        
+        valType = val.type
+        for moduleName, moduleFunctions in self.externalFunctions.items():
+            if valType == self.datatypes.get(moduleName, None) and "print" in moduleFunctions:
+                printFunc = moduleFunctions["print"]
+                self.builder.call(printFunc, [val], name=f"{moduleName}_print")
+                directlyPrinted = True
+                
+                if i < len(args) - 1:
+                    fmtStr = self.createStringConstant(" ")
+                    self.builder.call(self.printFunc, [fmtStr], name="print_space")
+                break
+                
+        if directlyPrinted:
+            return True
+                
+        if valType == ir.FloatType():
+            val = self.builder.fpext(val, ir.DoubleType(), name="promoted")
+            fmtParts.append("%f")
+        elif valType == ir.IntType(32):
+            fmtParts.append("%d")
+        elif valType == ir.IntType(8):
+            fmtParts.append("%c")
+        elif valType.is_pointer and valType.pointee == ir.IntType(8):
+            fmtParts.append("%s")
+        else:
+            fmtParts.append("%p")
+            
+        llvmArgs.append(val)
+        return False
+
     def PrintCall(self, node):
         fmtParts = []
         llvmArgs = []
         
         for i, arg in enumerate(node.args):
             val = self.codegen(arg)
-            # Track if this value was directly printed
-            directly_printed = False
-            
-            # Handle special case for custom datatype values
-            val_type = val.type
-            for module_name, module_functions in self.externalFunctions.items():
-                if val_type == self.datatypes.get(module_name, None) and "print" in module_functions:
-                    # The module has its own print function, use it
-                    printFunc = module_functions["print"]
-                    self.builder.call(printFunc, [val], name=f"{module_name}_print")
-                    directly_printed = True
-                    
-                    # Add extra space if this isn't the last argument
-                    if i < len(node.args) - 1:
-                        fmtStr = self.createStringConstant(" ")
-                        self.builder.call(self.printFunc, [fmtStr], name="print_space")
-                    break
-            
-            # Skip this value in the format string if directly printed
-            if directly_printed:
-                continue
-                
-            # Handle standard types
-            if val.type == ir.FloatType():
-                val = self.builder.fpext(val, ir.DoubleType(), name="promoted")
-                fmtParts.append("%f")
-            elif val.type == ir.IntType(32):
-                fmtParts.append("%d")
-            elif val.type == ir.IntType(8):
-                fmtParts.append("%c")
-            elif val.type.is_pointer and val.type.pointee == ir.IntType(8):
-                fmtParts.append("%s")
-            else:
-                # Generic handling for other types
-                fmtParts.append("%p")  # Print as pointer by default
-                
-            llvmArgs.append(val)
+            self.formatPrintValue(val, i, node.args, fmtParts, llvmArgs)
         
-        # If we have any standard types to print
         if fmtParts:
             fmtStr = " ".join(fmtParts) + "\n"
             fmtVal = self.createStringConstant(fmtStr)
             return self.builder.call(self.printFunc, [fmtVal] + llvmArgs)
         else:
-            # If everything was directly printed, just print a newline
-            if node.args:
-                nlStr = self.createStringConstant("\n")
-                return self.builder.call(self.printFunc, [nlStr], name="print_newline")
-            else:
-                # Empty print statement
-                emptyStr = self.createStringConstant("\n")
-                return self.builder.call(self.printFunc, [emptyStr], name="print_empty")
+            nlStr = self.createStringConstant("\n" if node.args else "\n")
+            return self.builder.call(self.printFunc, [nlStr], name="print_newline")
 
     def MemberAccess(self, node):
         objInfo = self.funcSymtab[node.objectExpr.name]
@@ -154,10 +141,7 @@ class ExpressionCodegen:
             if not info:
                 raise NameError("Variable '" + node.left.name + "' not declared.")
             val = self.codegen(node.right)
-            
-            # Generic type conversion
             val = self.convertValue(val, val.type, info["datatypeName"])
-                
             self.builder.store(val, info["addr"])
             return val
         elif node.left.__class__.__name__ == "MemberAccess":
@@ -174,23 +158,37 @@ class ExpressionCodegen:
         self.builder.store(val, ptr)
         return val
 
+    def getArrayElementPtr(self, arrayInfo, idx):
+        arrayAddr = arrayInfo["addr"]
+        
+        if "isArray" in arrayInfo and "sizeVar" in arrayInfo:
+            arrayPtr = self.builder.load(arrayAddr, name="array_ptr")
+            return self.builder.gep(arrayPtr, [idx], name="elem_ptr")
+        else:
+            return self.builder.gep(arrayAddr, [
+                ir.Constant(ir.IntType(32), 0),
+                idx
+            ], name="elem_ptr")
+
+    def checkArrayBounds(self, arrayInfo, idx):
+        if isinstance(idx, ir.Constant):
+            if "size" in arrayInfo and idx.constant >= arrayInfo["size"]:
+                raise IndexError(f"Array index {idx.constant} out of bounds for array of size {arrayInfo['size']}")
+        else:
+            if "size" in arrayInfo:
+                size = ir.Constant(ir.IntType(32), arrayInfo["size"])
+                isValid = self.builder.icmp_signed("<", idx, size, name="bounds_check")
+                with self.builder.if_then(isValid, likely=True):
+                    pass
+
     def ArrayElementAssignment(self, arrayAccessNode, val):
         arrayInfo = self.funcSymtab.get(arrayAccessNode.array.name)
         if not arrayInfo:
             raise NameError(f"Undefined array: {arrayAccessNode.array.name}")
 
         idx = self.codegen(arrayAccessNode.index)
-        arrayAddr = arrayInfo["addr"]
-
-        if "isArray" in arrayInfo and "sizeVar" in arrayInfo:
-            arrayPtr = self.builder.load(arrayAddr, name="array_ptr")
-            elemPtr = self.builder.gep(arrayPtr, [idx], name="elem_ptr")
-        else:
-            elemPtr = self.builder.gep(arrayAddr, [
-                ir.Constant(ir.IntType(32), 0),
-                idx
-            ], name="elem_ptr")
-
+        self.checkArrayBounds(arrayInfo, idx)
+        elemPtr = self.getArrayElementPtr(arrayInfo, idx)
         self.builder.store(val, elemPtr)
         return val
 
@@ -200,27 +198,8 @@ class ExpressionCodegen:
             raise NameError(f"Undefined array: {node.array.name}")
 
         idx = self.codegen(node.index)
-        arrayAddr = arrayInfo["addr"]
-
-        if isinstance(idx, ir.Constant):
-            if "size" in arrayInfo and idx.constant >= arrayInfo["size"]:
-                raise IndexError(f"Array index {idx.constant} out of bounds for array of size {arrayInfo['size']}")
-        else:
-            if "size" in arrayInfo:
-                size = ir.Constant(ir.IntType(32), arrayInfo["size"])
-                is_valid = self.builder.icmp_signed("<", idx, size, name="bounds_check")
-                with self.builder.if_then(is_valid, likely=True):
-                    pass
-
-        if "isArray" in arrayInfo and "sizeVar" in arrayInfo:
-            arrayPtr = self.builder.load(arrayAddr, name="array_ptr")
-            elemPtr = self.builder.gep(arrayPtr, [idx], name="elem_ptr")
-        else:
-            elemPtr = self.builder.gep(arrayAddr, [
-                ir.Constant(ir.IntType(32), 0),
-                idx
-            ], name="elem_ptr")
-
+        self.checkArrayBounds(arrayInfo, idx)
+        elemPtr = self.getArrayElementPtr(arrayInfo, idx)
         return self.builder.load(elemPtr, name="elem_value")
 
     def NewExpr(self, node):
