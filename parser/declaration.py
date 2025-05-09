@@ -3,25 +3,28 @@ class DeclarationParser:
         self.consumeToken("CLASS")
         className = self.consumeToken("ID").tokenValue
         fields, methods = self.parseBodyMembers("LBRACE", "RBRACE", 
-                                                lambda: self.parseClassMember(className))
+                                              lambda: self.parseClassMember(className))
         return self.astClasses["ClassDecl"](className, fields, methods)
 
     def parseBodyMembers(self, openToken, closeToken, parseMemberFunc):
         self.consumeToken(openToken)
         fields = []
         methods = []
+        
         while self.currentToken() and not self.match(closeToken):
             member = parseMemberFunc()
             if member.__class__.__name__ == "MethodDecl":
                 methods.append(member)
             else:
                 fields.append(member)
+                
         self.consumeToken(closeToken)
         return fields, methods
 
     def parseClassMember(self, className):
         dataTypeToken = self.consumeDatatype()
         nameToken = self.consumeToken("ID")
+        
         if self.match("LPAREN"):
             return self.parseMethodDeclaration(dataTypeToken, nameToken, className)
         else:
@@ -31,7 +34,7 @@ class DeclarationParser:
     def parseMethodDeclaration(self, returnTypeToken, nameToken, className):
         methodName = nameToken.tokenValue
         params = self.consumePairedTokens("LPAREN", "RPAREN", 
-                                         lambda: self.parseDelimitedList("RPAREN", "COMMA", self.parseParameter))
+                                        lambda: self.parseDelimitedList("RPAREN", "COMMA", self.parseParameter))
         body = self.parseBlock()
         return self.astClasses["MethodDecl"](methodName, params, body, className, returnTypeToken.tokenValue)
 
@@ -48,17 +51,23 @@ class DeclarationParser:
         dataTypeName = dataTypeToken.tokenValue
 
         if self.match("LBRACKET"):
-            self.consumeToken("LBRACKET")
-            size = None if self.match("RBRACKET") else self.parseExpression()
-            self.consumeToken("RBRACKET")
-            varName = self.consumeToken("ID").tokenValue
+            return self.parseArrayDeclaration(dataTypeName)
+            
+        return self.parseVarDeclaration(dataTypeName)
+        
+    def parseArrayDeclaration(self, dataTypeName):
+        self.consumeToken("LBRACKET")
+        size = None if self.match("RBRACKET") else self.parseExpression()
+        self.consumeToken("RBRACKET")
+        varName = self.consumeToken("ID").tokenValue
 
-            if self.match("EQ"):
-                return self.parseInitializedDeclaration(varName, f"{dataTypeName}[]")
+        if self.match("EQ"):
+            return self.parseInitializedDeclaration(varName, f"{dataTypeName}[]")
 
-            self.consumeToken("SEMICOLON")
-            return self.astClasses["ArrayDecl"](varName, size, dataTypeName)
-
+        self.consumeToken("SEMICOLON")
+        return self.astClasses["ArrayDecl"](varName, size, dataTypeName)
+        
+    def parseVarDeclaration(self, dataTypeName):
         varName = self.consumeToken("ID").tokenValue
 
         if self.match("EQ"):
@@ -82,11 +91,18 @@ class DeclarationParser:
         return self.astClasses["Function"](name, dataTypeToken.tokenValue, body)
         
     def isDatatype(self, token):
-        return token and (token.tokenType in self.datatypes or 
-                         (token.tokenType == "ID" and 
-                          (token.tokenValue in self.classNames or 
-                           token.tokenValue == "string" or 
-                           token.tokenValue in self.language["datatypes"])))
+        if not token:
+            return False
+            
+        if token.tokenType in self.datatypes:
+            return True
+            
+        if token.tokenType == "ID":
+            return (token.tokenValue in self.classNames or 
+                   token.tokenValue == "string" or 
+                   token.tokenValue in self.language["datatypes"])
+                   
+        return False
 
     def consumeDatatype(self):
         token = self.currentToken()

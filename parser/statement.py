@@ -1,6 +1,7 @@
 class StatementParser:
     def parseStatement(self):
         token = self.currentToken()
+        
         if token.tokenType in self.statementParseMap:
             return self.statementParseMap[token.tokenType]()
         elif self.isDatatype(token):
@@ -39,12 +40,14 @@ class StatementParser:
 
     def parseFor(self):
         self.consumeToken("FOR")
+        
         self.consumeToken("LPAREN")
         init = self.parseStatement()
         condition = self.parseExpression()
         self.consumeToken("SEMICOLON")
         increment = self.parseExpression()
         self.consumeToken("RPAREN")
+        
         body = self.parseBlock()
         return self.astClasses["For"](init, condition, increment, body)
 

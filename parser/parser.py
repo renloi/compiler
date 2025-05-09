@@ -10,19 +10,29 @@ class Parser(ExpressionParser, StatementParser, DeclarationParser):
         self.pos = 0
         self.astClasses = AstFactory(language).astClasses
         self.classNames = set()
-        self.statementParseMap = {}
-        for key, funcName in language["statementParseMap"].items():
-            self.statementParseMap[key] = getattr(self, funcName)
-        self.factorParseMap = {}
-        for key, value in language["factorParseMap"].items():
+        
+        self.statementParseMap = self.buildParseMap(language["statementParseMap"])
+        self.factorParseMap = self.buildFactorParseMap(language["factorParseMap"])
+        
+        self.opPrecedences = language["operators"]["precedences"]
+        self.datatypes = ("INT", "FLOAT", "CHAR")
+
+    def buildParseMap(self, parseMapDef):
+        parseMap = {}
+        for key, funcName in parseMapDef.items():
+            parseMap[key] = getattr(self, funcName)
+        return parseMap
+        
+    def buildFactorParseMap(self, parseMapDef):
+        parseMap = {}
+        for key, value in parseMapDef.items():
             if isinstance(value, dict):
                 method = getattr(self, value["method"])
                 args = value["args"]
-                self.factorParseMap[key] = (lambda m=method, a=args: m(*a))
+                parseMap[key] = (lambda m=method, a=args: m(*a))
             else:
-                self.factorParseMap[key] = getattr(self, value)
-        self.op_precedences = language["operators"]["precedences"]
-        self.datatypes = ("INT", "FLOAT", "CHAR")
+                parseMap[key] = getattr(self, value)
+        return parseMap
 
     def currentToken(self):
         return self.tokens[self.pos] if self.pos < len(self.tokens) else None
@@ -58,6 +68,7 @@ class Parser(ExpressionParser, StatementParser, DeclarationParser):
     def parseProgram(self):
         functions = []
         classes = []
+        
         while self.currentToken() is not None:
             if self.match("CLASS"):
                 classDecl = self.parseClassDeclaration()
@@ -67,13 +78,16 @@ class Parser(ExpressionParser, StatementParser, DeclarationParser):
                 functions.append(self.parseFunction())
             else:
                 self.advance()
+                
         return self.astClasses["Program"](functions, classes)
 
     def parseDelimitedList(self, endToken, delimiterToken, parseFunc):
         result = []
+        
         if not self.match(endToken):
             result.append(parseFunc())
             while self.match(delimiterToken):
                 self.consumeToken(delimiterToken)
                 result.append(parseFunc())
+                
         return result 
