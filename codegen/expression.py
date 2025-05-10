@@ -172,7 +172,7 @@ class ExpressionCodegen:
 
     def checkArrayBounds(self, arrayInfo, idx):
         if isinstance(idx, ir.Constant):
-            if "size" in arrayInfo and idx.constant >= arrayInfo["size"]:
+            if "size" in arrayInfo and int(idx.constant) >= arrayInfo["size"]:
                 raise IndexError(f"Array index {idx.constant} out of bounds for array of size {arrayInfo['size']}")
         else:
             if "size" in arrayInfo:
