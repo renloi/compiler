@@ -5,9 +5,6 @@ datatype = "bint"
 typeRepresentation = ir.PointerType(ir.IntType(8))
 libraries = ["-lgmp", "-lgmpxx"]
 
-printConfig = {
-}
-
 functions: Dict[str, Tuple[str, List[str]]] = {
     "add": ("bint", ["bint", "bint"]),
     "sub": ("bint", ["bint", "bint"]),
@@ -36,32 +33,17 @@ functions: Dict[str, Tuple[str, List[str]]] = {
 }
 
 def registerWithCodegen(codegen):
-    # Store original functions
-    originalConvertValue = codegen.convertValue
     originalBinOp = codegen.BinOp
-    
-    def enhancedConvertValue(self, value, sourceType, targetTypeName):
-        # Special case: convert int to bint
-        if targetTypeName == "bint" and sourceType == ir.IntType(32):
-            print(f"Converting int to bint")
-            fromIntFunc = self.externalFunctions["bint"]["from_int"]
-            return self.builder.call(fromIntFunc, [value], name="int_to_bint")
-        
-        # Default case: use original implementation
-        return originalConvertValue(value, sourceType, targetTypeName)
-    
+
     def enhancedBinOp(self, node):
-        # Handle binary operations with bint operands
         if node.op in ['+', '-', '*', '/', '%']:
             left = self.codegen(node.left)
             right = self.codegen(node.right)
             
-            # Check if either operand is a bint
             leftIsBint = left.type.is_pointer and left.type.pointee == ir.IntType(8)
             rightIsBint = right.type.is_pointer and right.type.pointee == ir.IntType(8)
             
             if leftIsBint or rightIsBint:
-                # Convert int to bint if needed
                 if not leftIsBint and left.type == ir.IntType(32):
                     fromIntFunc = self.externalFunctions["bint"]["from_int"]
                     left = self.builder.call(fromIntFunc, [left], name="binop_left_to_bint")
@@ -70,7 +52,6 @@ def registerWithCodegen(codegen):
                     fromIntFunc = self.externalFunctions["bint"]["from_int"]
                     right = self.builder.call(fromIntFunc, [right], name="binop_right_to_bint")
                 
-                # Call appropriate bint operation
                 if node.op == '+':
                     return self.builder.call(self.externalFunctions["bint"]["add"], [left, right], name="bint_add_result")
                 elif node.op == '-':
@@ -82,10 +63,7 @@ def registerWithCodegen(codegen):
                 elif node.op == '%':
                     return self.builder.call(self.externalFunctions["bint"]["mod"], [left, right], name="bint_mod_result")
         
-        # Use original implementation for all other cases
         return originalBinOp(node)
     
-    # Replace the methods
-    codegen.convertValue = enhancedConvertValue.__get__(codegen, codegen.__class__)
     codegen.BinOp = enhancedBinOp.__get__(codegen, codegen.__class__) 
     

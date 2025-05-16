@@ -180,6 +180,13 @@ class Compiler:
                     self.customTokens.append((tokenType, tokenRegex))
                     print(f"Registered custom token: {tokenType}")
 
+            else:
+                functionsDict = self.stdlibModules[moduleName]['functions']
+                mappingDict = self.stdlibModules[moduleName]['mapping']
+                for fn in list(functionsDict.keys()):
+                    if fn not in mappingDict:
+                        mappingDict[fn] = f"{moduleName}_{fn}"
+
             self.compileStdlibModule(moduleName)
 
     def compileStdlibModule(self, moduleName):
