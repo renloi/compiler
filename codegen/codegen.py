@@ -190,3 +190,18 @@ class Codegen(ExpressionCodegen, StatementCodegen, DeclarationCodegen):
                 continue
                 
         return value 
+
+    def externalFunction(self, moduleName, funcName):
+        """Return the registered LLVM Function for a stdlib module or None."""
+        return self.externalFunctions.get(moduleName, {}).get(funcName)
+
+    def externalConstant(self, moduleName, constName):
+        """Return the registered LLVM Function wrapper for a constant or None."""
+        return self.externalConstants.get(moduleName, {}).get(constName)
+
+    def callExternal(self, moduleName, funcName, args=None):
+        """If the function exists, emit a call and return the value; else None."""
+        func = self.externalFunction(moduleName, funcName)
+        if func is None:
+            return None
+        return self.builder.call(func, args or []) 

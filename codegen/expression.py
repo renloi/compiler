@@ -59,14 +59,15 @@ class ExpressionCodegen:
             if node.callee.objectExpr.__class__.__name__ == "Var":
                 moduleName = node.callee.objectExpr.name
                 functionName = node.callee.memberName
-                
-                if moduleName in self.externalFunctions and functionName in self.externalFunctions[moduleName]:
-                    func = self.externalFunctions[moduleName][functionName]
-                    return self.handleFunctionArgs(func, node.args)
-                elif moduleName in self.externalConstants and functionName in self.externalConstants[moduleName]:
-                    func = self.externalConstants[moduleName][functionName]
-                    return self.builder.call(func, [])
-                
+
+                args = [self.codegen(arg) for arg in node.args]
+                res = self.callExternal(moduleName, functionName, args)
+                if res is not None:
+                    return res
+
+                constRes = self.callExternal(moduleName, functionName, [])
+                if constRes is not None:
+                    return constRes
             obj = self.funcSymtab[node.callee.objectExpr.name]["addr"]
             methodName = node.callee.memberName
             info = self.funcSymtab.get(node.callee.objectExpr.name)
@@ -88,16 +89,14 @@ class ExpressionCodegen:
         directlyPrinted = False
         
         valType = val.type
-        for moduleName, moduleFunctions in self.externalFunctions.items():
-            if valType == self.datatypes.get(moduleName, None) and "print" in moduleFunctions:
-                printFunc = moduleFunctions["print"]
-                self.builder.call(printFunc, [val], name=f"{moduleName}_print")
-                directlyPrinted = True
-                
-                if i < len(args) - 1:
-                    fmtStr = self.createStringConstant(" ")
-                    self.builder.call(self.printFunc, [fmtStr], name="print_space")
-                break
+        for moduleName in self.externalFunctions:
+            if valType == self.datatypes.get(moduleName, None):
+                if self.callExternal(moduleName, "print", [val]):
+                    directlyPrinted = True
+                    if i < len(args) - 1:
+                        fmtStr = self.createStringConstant(" ")
+                        self.builder.call(self.printFunc, [fmtStr], name="print_space")
+                    break
                 
         if directlyPrinted:
             return True
