@@ -23,7 +23,7 @@ class ExpressionCodegen:
         return ir.Constant(ir.IntType(8), ord(node.value))
 
     def BinOp(self, node):
-        customRes = self._tryCustomBinop(node)
+        customRes = self.tryCustomBinop(node)
         if customRes is not None:
             return customRes
         
@@ -256,7 +256,7 @@ class ExpressionCodegen:
             return "char"
         return None
 
-    def _tryCustomBinop(self, node):
+    def tryCustomBinop(self, node):
         opToFunc = {
             '+': 'add',
             '-': 'sub',
