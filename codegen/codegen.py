@@ -26,13 +26,6 @@ class Codegen(ExpressionCodegen, StatementCodegen, DeclarationCodegen):
         if moduleName not in self.modules:
             self.modules[moduleName] = {}
             
-            try:
-                module = importlib.import_module(f"stdlib.{moduleName}.{moduleName}")
-                if hasattr(module, 'registerWithCodegen'):
-                    module.registerWithCodegen(self)
-            except (ImportError, AttributeError):
-                pass
-            
         return self.modules[moduleName]
 
     def registerExternalFunction(self, moduleName, funcName, cFuncName, returnType, paramTypes):

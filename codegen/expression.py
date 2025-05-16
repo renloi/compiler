@@ -23,6 +23,10 @@ class ExpressionCodegen:
         return ir.Constant(ir.IntType(8), ord(node.value))
 
     def BinOp(self, node):
+        custom_res = self._try_custom_binop(node)
+        if custom_res is not None:
+            return custom_res
+        
         if node.op in self.binOpMap:
             intOp, floatOp, resName = self.binOpMap[node.op]
             return self.genArith(node, intOp, floatOp, resName)
@@ -232,3 +236,85 @@ class ExpressionCodegen:
             self.builder.store(elemValue, elemPtr)
 
         return array 
+
+    # ------------------------------------------------------------------
+    # Helper utilities for custom datatype operator overloading
+    # ------------------------------------------------------------------
+    def _infer_datatype_name(self, ast_node):
+        """Best-effort inference of the semantic datatype name from an AST node.
+        This relies on symbol-table information populated during code-generation
+        of declarations. It falls back to primitive literal types when possible.
+        Returns the datatype name as declared in source code, or None if it
+        cannot be determined with confidence."""
+        cls = ast_node.__class__.__name__
+        if cls == "Var":
+            info = self.funcSymtab.get(ast_node.name)
+            if info:
+                return info.get("datatypeName")
+        elif cls == "Num":
+            return "int"
+        elif cls == "FloatNum":
+            return "float"
+        elif cls == "String":
+            return "string"
+        elif cls == "Char":
+            return "char"
+        return None  # Fallback when we cannot deduce the type reliably.
+
+    def _try_custom_binop(self, node):
+        """Intercept binary operations to see if either operand's datatype
+        provides its own implementation (e.g. bint.add, bigdecimal.mul, etc.).
+        If a matching implementation is found, emit a call to the external
+        function and return the resulting LLVM value. Otherwise, return None
+        so that the default arithmetic / comparison logic is used."""
+        # Map language operator tokens to canonical function names used inside
+        # stdlib modules.
+        op_to_func = {
+            '+': 'add',
+            '-': 'sub',
+            '*': 'mul',
+            '/': 'div',
+            '%': 'mod',
+            '&': 'and',
+            '^': 'xor',
+            '|': 'or',
+            '<<': 'lshift',
+            '>>': 'rshift'
+        }
+
+        func_name = op_to_func.get(node.op)
+        if not func_name:
+            return None  # Not an arithmetic op we can overload here.
+
+        # Code-generate operands first (required regardless of path).
+        left_val = self.codegen(node.left)
+        right_val = self.codegen(node.right)
+
+        left_type_name = self._infer_datatype_name(node.left)
+        right_type_name = self._infer_datatype_name(node.right)
+
+        # Decide which side's datatype will drive the dispatch. Prefer the left
+        # operand; if it does not expose the needed function, attempt right.
+        chosen_type = None
+        if left_type_name in self.externalFunctions and \
+           func_name in self.externalFunctions[left_type_name]:
+            chosen_type = left_type_name
+        elif right_type_name in self.externalFunctions and \
+             func_name in self.externalFunctions[right_type_name]:
+            chosen_type = right_type_name
+
+        if not chosen_type:
+            return None  # No custom implementation available.
+
+        # Retrieve the LLVM function for the overloaded operator.
+        llvm_func = self.externalFunctions[chosen_type][func_name]
+
+        # Ensure both operands are of the chosen datatype, performing implicit
+        # conversions when possible through convertValue.
+        if left_type_name != chosen_type:
+            left_val = self.convertValue(left_val, left_val.type, chosen_type)
+        if right_type_name != chosen_type:
+            right_val = self.convertValue(right_val, right_val.type, chosen_type)
+
+        return self.builder.call(llvm_func, [left_val, right_val],
+                                 name=f"{chosen_type}_{func_name}_result") 
