@@ -1,19 +1,6 @@
 from llvmlite import ir
 
 class ExpressionCodegen:
-    OP_FUNC_MAP = {
-        '+': 'add',
-        '-': 'sub',
-        '*': 'mul',
-        '/': 'div',
-        '%': 'mod',
-        '&': 'and',
-        '^': 'xor',
-        '|': 'or',
-        '<<': 'lshift',
-        '>>': 'rshift'
-    }
-
     def Return(self, node):
         return self.builder.ret(self.codegen(node.expr))
 
@@ -270,7 +257,7 @@ class ExpressionCodegen:
         return None
 
     def tryCustomBinop(self, node):
-        funcName = self.OP_FUNC_MAP.get(node.op)
+        funcName = getattr(self, "opFuncMap", {}).get(node.op)
         if not funcName:
             return None
 

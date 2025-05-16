@@ -21,6 +21,7 @@ class Codegen(ExpressionCodegen, StatementCodegen, DeclarationCodegen):
         self.externalFunctions = {}
         self.externalConstants = {}
         self.modules = {}
+        self.opFuncMap = {op: vals[0] for op, vals in self.binOpMap.items()}
 
     def initModule(self, moduleName):
         if moduleName not in self.modules:
