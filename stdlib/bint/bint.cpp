@@ -468,27 +468,6 @@ extern "C" {
         return *static_cast<bint*>(a) >= *static_cast<bint*>(b);
     }
 
-    int bint_to_int(void* a) {
-        return static_cast<int>(*static_cast<bint*>(a));
-    }
-
-    const char* bint_to_string(void* a) {
-
-        static char buffer[1024];
-
-        std::string str = static_cast<std::string>(*static_cast<bint*>(a));
-
-        if (str.length() < sizeof(buffer) - 1) {
-            strcpy(buffer, str.c_str());
-            return buffer;
-        } else {
-
-            strncpy(buffer, str.c_str(), sizeof(buffer) - 1);
-            buffer[sizeof(buffer) - 1] = '\0';
-            return buffer;
-        }
-    }
-
     void bint_print(void* a) {
         try {
             if (a == nullptr) {

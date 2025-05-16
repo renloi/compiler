@@ -18,10 +18,6 @@ for cmp in ["eq", "ne", "lt", "le", "gt", "ge"]:
 
 module.functions["lshift"] = ("bint", ["bint", "int"])
 module.functions["rshift"] = ("bint", ["bint", "int"])
-module.functions["toInt"] = ("int", ["bint"])
-module.mapping["toInt"] = "bint_to_int"
-module.functions["toString"] = ("string", ["bint"])
-module.mapping["toString"] = "bint_to_string"
 module.functions["print"] = ("void", ["bint"])
 
 module.addConversion("int", "bint", "fromInt")

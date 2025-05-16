@@ -32,9 +32,6 @@ int bint_le(void* a, void* b);
 int bint_gt(void* a, void* b);
 int bint_ge(void* a, void* b);
 
-int bint_to_int(void* a);
-const char* bint_to_string(void* a);
-
 #ifdef __cplusplus
 }
 #endif
