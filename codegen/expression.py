@@ -23,9 +23,9 @@ class ExpressionCodegen:
         return ir.Constant(ir.IntType(8), ord(node.value))
 
     def BinOp(self, node):
-        custom_res = self._try_custom_binop(node)
-        if custom_res is not None:
-            return custom_res
+        customRes = self._tryCustomBinop(node)
+        if customRes is not None:
+            return customRes
         
         if node.op in self.binOpMap:
             intOp, floatOp, resName = self.binOpMap[node.op]
@@ -240,15 +240,10 @@ class ExpressionCodegen:
     # ------------------------------------------------------------------
     # Helper utilities for custom datatype operator overloading
     # ------------------------------------------------------------------
-    def _infer_datatype_name(self, ast_node):
-        """Best-effort inference of the semantic datatype name from an AST node.
-        This relies on symbol-table information populated during code-generation
-        of declarations. It falls back to primitive literal types when possible.
-        Returns the datatype name as declared in source code, or None if it
-        cannot be determined with confidence."""
-        cls = ast_node.__class__.__name__
+    def inferDatatypeName(self, astNode):
+        cls = astNode.__class__.__name__
         if cls == "Var":
-            info = self.funcSymtab.get(ast_node.name)
+            info = self.funcSymtab.get(astNode.name)
             if info:
                 return info.get("datatypeName")
         elif cls == "Num":
@@ -259,17 +254,10 @@ class ExpressionCodegen:
             return "string"
         elif cls == "Char":
             return "char"
-        return None  # Fallback when we cannot deduce the type reliably.
+        return None
 
-    def _try_custom_binop(self, node):
-        """Intercept binary operations to see if either operand's datatype
-        provides its own implementation (e.g. bint.add, bigdecimal.mul, etc.).
-        If a matching implementation is found, emit a call to the external
-        function and return the resulting LLVM value. Otherwise, return None
-        so that the default arithmetic / comparison logic is used."""
-        # Map language operator tokens to canonical function names used inside
-        # stdlib modules.
-        op_to_func = {
+    def _tryCustomBinop(self, node):
+        opToFunc = {
             '+': 'add',
             '-': 'sub',
             '*': 'mul',
@@ -282,39 +270,30 @@ class ExpressionCodegen:
             '>>': 'rshift'
         }
 
-        func_name = op_to_func.get(node.op)
-        if not func_name:
-            return None  # Not an arithmetic op we can overload here.
+        funcName = opToFunc.get(node.op)
+        if not funcName:
+            return None
 
-        # Code-generate operands first (required regardless of path).
-        left_val = self.codegen(node.left)
-        right_val = self.codegen(node.right)
+        leftVal = self.codegen(node.left)
+        rightVal = self.codegen(node.right)
 
-        left_type_name = self._infer_datatype_name(node.left)
-        right_type_name = self._infer_datatype_name(node.right)
+        leftTypeName = self.inferDatatypeName(node.left)
+        rightTypeName = self.inferDatatypeName(node.right)
 
-        # Decide which side's datatype will drive the dispatch. Prefer the left
-        # operand; if it does not expose the needed function, attempt right.
-        chosen_type = None
-        if left_type_name in self.externalFunctions and \
-           func_name in self.externalFunctions[left_type_name]:
-            chosen_type = left_type_name
-        elif right_type_name in self.externalFunctions and \
-             func_name in self.externalFunctions[right_type_name]:
-            chosen_type = right_type_name
+        chosenType = None
+        if leftTypeName in self.externalFunctions and funcName in self.externalFunctions[leftTypeName]:
+            chosenType = leftTypeName
+        elif rightTypeName in self.externalFunctions and funcName in self.externalFunctions[rightTypeName]:
+            chosenType = rightTypeName
 
-        if not chosen_type:
-            return None  # No custom implementation available.
+        if not chosenType:
+            return None
 
-        # Retrieve the LLVM function for the overloaded operator.
-        llvm_func = self.externalFunctions[chosen_type][func_name]
+        llvmFunc = self.externalFunctions[chosenType][funcName]
 
-        # Ensure both operands are of the chosen datatype, performing implicit
-        # conversions when possible through convertValue.
-        if left_type_name != chosen_type:
-            left_val = self.convertValue(left_val, left_val.type, chosen_type)
-        if right_type_name != chosen_type:
-            right_val = self.convertValue(right_val, right_val.type, chosen_type)
+        if leftTypeName != chosenType:
+            leftVal = self.convertValue(leftVal, leftVal.type, chosenType)
+        if rightTypeName != chosenType:
+            rightVal = self.convertValue(rightVal, rightVal.type, chosenType)
 
-        return self.builder.call(llvm_func, [left_val, right_val],
-                                 name=f"{chosen_type}_{func_name}_result") 
+        return self.builder.call(llvmFunc, [leftVal, rightVal], name=f"{chosenType}_{funcName}_result") 
