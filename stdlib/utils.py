@@ -3,7 +3,7 @@ from typing import Dict, List, Tuple, Optional, Callable
 from llvmlite import ir
 
 @dataclass
-class StdModule:
+class Module:
     name: str
     datatype: Optional[str] = None
     typeRepresentation: Optional[ir.Type] = None

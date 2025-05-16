@@ -1,7 +1,7 @@
 from llvmlite import ir
-from stdlib.module_utils import StdModule
+from stdlib.utils import Module
 
-module = StdModule(
+module = Module(
     name="bint",
     datatype="bint",
     typeRepresentation=ir.PointerType(ir.IntType(8)),

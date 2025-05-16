@@ -1,6 +1,6 @@
-from stdlib.module_utils import StdModule
+from stdlib.utils import Module
 
-module = StdModule(name="math")
+module = Module(name="math")
 
 for fn in ["sin", "cos", "tan", "sqrt", "log", "exp", "abs", "floor", "ceil", "round"]:
     module.functions[fn] = ("float", ["float"])
