@@ -1,36 +1,37 @@
-from typing import Dict, List, Tuple
 from llvmlite import ir
+from stdlib.module_utils import StdModule
 
-datatype = "bint"
-typeRepresentation = ir.PointerType(ir.IntType(8))
-libraries = ["-lgmp", "-lgmpxx"]
+module = StdModule(
+    name="bint",
+    datatype="bint",
+    typeRepresentation=ir.PointerType(ir.IntType(8)),
+    libraries=["-lgmp", "-lgmpxx"]
+)
 
-functions: Dict[str, Tuple[str, List[str]]] = {
-    "add": ("bint", ["bint", "bint"]),
-    "sub": ("bint", ["bint", "bint"]),
-    "mul": ("bint", ["bint", "bint"]),
-    "div": ("bint", ["bint", "bint"]),
-    "mod": ("bint", ["bint", "bint"]),
-    
-    "eq": ("bool", ["bint", "bint"]),
-    "ne": ("bool", ["bint", "bint"]),
-    "lt": ("bool", ["bint", "bint"]),
-    "le": ("bool", ["bint", "bint"]),
-    "gt": ("bool", ["bint", "bint"]),
-    "ge": ("bool", ["bint", "bint"]),
-    
-    "and": ("bint", ["bint", "bint"]),
-    "or": ("bint", ["bint", "bint"]),
-    "xor": ("bint", ["bint", "bint"]),
-    "not": ("bint", ["bint"]),
-    "lshift": ("bint", ["bint", "int"]),
-    "rshift": ("bint", ["bint", "int"]),
-    
-    "to_int": ("int", ["bint"]),
-    "to_string": ("string", ["bint"]),
-    
-    "print": ("void", ["bint"])
-}
+for op in ["add", "sub", "mul", "div", "mod", "and", "or", "xor"]:
+    module.functions[op] = ("bint", ["bint", "bint"])
+
+module.functions["not"] = ("bint", ["bint"])
+
+for cmp in ["eq", "ne", "lt", "le", "gt", "ge"]:
+    module.functions[cmp] = ("bool", ["bint", "bint"])
+
+module.functions["lshift"] = ("bint", ["bint", "int"])
+module.functions["rshift"] = ("bint", ["bint", "int"])
+module.functions["toInt"] = ("int", ["bint"])
+module.mapping["toInt"] = "bint_to_int"
+module.functions["toString"] = ("string", ["bint"])
+module.mapping["toString"] = "bint_to_string"
+module.functions["print"] = ("void", ["bint"])
+
+module.addConversion("int", "bint", "fromInt")
+
+module.functions["fromInt"] = ("bint", ["int"])
+module.mapping["fromInt"] = "bint_from_int"
+module.functions["fromString"] = ("bint", ["string"])
+module.mapping["fromString"] = "bint_from_string"
+
+module = module.export()
 
 def registerWithCodegen(codegen):
     originalBinOp = codegen.BinOp
@@ -45,11 +46,11 @@ def registerWithCodegen(codegen):
             
             if leftIsBint or rightIsBint:
                 if not leftIsBint and left.type == ir.IntType(32):
-                    fromIntFunc = self.externalFunctions["bint"]["from_int"]
+                    fromIntFunc = self.externalFunctions["bint"]["fromInt"]
                     left = self.builder.call(fromIntFunc, [left], name="binop_left_to_bint")
                 
                 if not rightIsBint and right.type == ir.IntType(32):
-                    fromIntFunc = self.externalFunctions["bint"]["from_int"]
+                    fromIntFunc = self.externalFunctions["bint"]["fromInt"]
                     right = self.builder.call(fromIntFunc, [right], name="binop_right_to_bint")
                 
                 if node.op == '+':

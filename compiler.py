@@ -123,15 +123,17 @@ class Compiler:
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
 
+            meta = getattr(module, 'module', module)
+
             self.stdlibModules[moduleName] = {
-                'functions': getattr(module, 'functions', {}),
-                'mapping': getattr(module, 'mapping', {}),
-                'constants': getattr(module, 'constants', {}),
-                'libraries': getattr(module, 'libraries', [])
+                'functions': getattr(meta, 'functions', {}),
+                'mapping': getattr(meta, 'mapping', {}),
+                'constants': getattr(meta, 'constants', {}),
+                'libraries': getattr(meta, 'libraries', [])
             }
 
-            if hasattr(module, 'datatype'):
-                typeName = module.datatype
+            if hasattr(meta, 'datatype'):
+                typeName = meta.datatype
 
                 stdlibInfo = self.stdlibModules[moduleName]
                 functionsDict = stdlibInfo['functions']
@@ -152,17 +154,17 @@ class Compiler:
                             'function': constructorName
                         }
 
-                ensureConstructor('from_int', 'int')
-                ensureConstructor('from_string', 'string')
+                ensureConstructor('fromInt', 'int')
+                ensureConstructor('fromString', 'string')
 
                 for fn in list(functionsDict.keys()):
                     if fn not in mappingDict:
                         mappingDict[fn] = f"{moduleName}_{fn}"
 
-                if hasattr(module, 'type_representation'):
-                    typeRepresentation = module.type_representation
-                elif hasattr(module, 'typeRepresentation'):
-                    typeRepresentation = module.typeRepresentation
+                if hasattr(meta, 'type_representation'):
+                    typeRepresentation = meta.type_representation
+                elif hasattr(meta, 'typeRepresentation'):
+                    typeRepresentation = meta.typeRepresentation
                 else:
                     from llvmlite import ir
                     typeRepresentation = ir.PointerType(ir.IntType(8))
@@ -173,8 +175,8 @@ class Compiler:
                 self.customTypeNames.add(typeName)
                 print(f"Registered custom datatype: {typeName}")
 
-                if hasattr(module, 'token'):
-                    token = module.token
+                if hasattr(meta, 'token'):
+                    token = meta.token
                     tokenType = token["type"]
                     tokenRegex = token["regex"]
                     self.customTokens.append((tokenType, tokenRegex))

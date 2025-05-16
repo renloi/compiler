@@ -160,19 +160,23 @@ class Codegen(ExpressionCodegen, StatementCodegen, DeclarationCodegen):
         if targetTypeName in self.externalFunctions:
             moduleFuncs = self.externalFunctions[targetTypeName]
 
-            if sourceType == ir.IntType(32) and 'from_int' in moduleFuncs:
-                convFunc = moduleFuncs['from_int']
+            intCtor = 'fromInt' if 'fromInt' in moduleFuncs else 'from_int'
+            strCtor = 'fromString' if 'fromString' in moduleFuncs else 'from_string'
+
+            if sourceType == ir.IntType(32) and intCtor in moduleFuncs:
+                convFunc = moduleFuncs[intCtor]
                 return self.builder.call(convFunc, [value], name=f"{targetTypeName}FromInt")
 
-            if value.type.is_pointer and value.type.pointee == ir.IntType(8) and 'from_string' in moduleFuncs:
-                convFunc = moduleFuncs['from_string']
+            if value.type.is_pointer and value.type.pointee == ir.IntType(8) and strCtor in moduleFuncs:
+                convFunc = moduleFuncs[strCtor]
                 return self.builder.call(convFunc, [value], name=f"{targetTypeName}FromString")
 
         for moduleName in self.externalFunctions:
             try:
                 module = importlib.import_module(f"stdlib.{moduleName}.{moduleName}")
                 
-                convTable = getattr(module, 'typeConversion', getattr(module, 'type_conversion', {}))
+                metaObj = getattr(module, 'module', module)
+                convTable = getattr(metaObj, 'typeConversion', getattr(metaObj, 'type_conversion', {}))
 
                 for convName, convInfo in convTable.items():
                     sourceTypeName = convInfo.get('sourceType', convInfo.get('source_type', ''))

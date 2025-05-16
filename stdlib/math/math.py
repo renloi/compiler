@@ -1,20 +1,13 @@
-from typing import Dict, List, Tuple
+from stdlib.module_utils import StdModule
 
-functions: Dict[str, Tuple[str, List[str]]] = {
-    "sin": ("float", ["float"]),
-    "cos": ("float", ["float"]),
-    "tan": ("float", ["float"]),
-    "sqrt": ("float", ["float"]),
-    "pow": ("float", ["float", "float"]),
-    "log": ("float", ["float"]),
-    "exp": ("float", ["float"]),
-    "abs": ("float", ["float"]),
-    "floor": ("float", ["float"]),
-    "ceil": ("float", ["float"]),
-    "round": ("float", ["float"]),
-}
+module = StdModule(name="math")
 
-constants: Dict[str, Tuple[str, str]] = {
-    "PI": ("float", "math_PI"),
-    "E": ("float", "math_E"),
-} 
+for fn in ["sin", "cos", "tan", "sqrt", "log", "exp", "abs", "floor", "ceil", "round"]:
+    module.functions[fn] = ("float", ["float"])
+
+module.functions["pow"] = ("float", ["float", "float"])
+
+module.constants["PI"] = ("float", "math_PI")
+module.constants["E"] = ("float", "math_E")
+
+module = module.export() 
