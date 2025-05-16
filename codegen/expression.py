@@ -1,6 +1,19 @@
 from llvmlite import ir
 
 class ExpressionCodegen:
+    OP_FUNC_MAP = {
+        '+': 'add',
+        '-': 'sub',
+        '*': 'mul',
+        '/': 'div',
+        '%': 'mod',
+        '&': 'and',
+        '^': 'xor',
+        '|': 'or',
+        '<<': 'lshift',
+        '>>': 'rshift'
+    }
+
     def Return(self, node):
         return self.builder.ret(self.codegen(node.expr))
 
@@ -257,43 +270,29 @@ class ExpressionCodegen:
         return None
 
     def tryCustomBinop(self, node):
-        opToFunc = {
-            '+': 'add',
-            '-': 'sub',
-            '*': 'mul',
-            '/': 'div',
-            '%': 'mod',
-            '&': 'and',
-            '^': 'xor',
-            '|': 'or',
-            '<<': 'lshift',
-            '>>': 'rshift'
-        }
-
-        funcName = opToFunc.get(node.op)
+        funcName = self.OP_FUNC_MAP.get(node.op)
         if not funcName:
             return None
 
         leftVal = self.codegen(node.left)
         rightVal = self.codegen(node.right)
 
-        leftTypeName = self.inferDatatypeName(node.left)
-        rightTypeName = self.inferDatatypeName(node.right)
+        leftType = self.inferDatatypeName(node.left)
+        rightType = self.inferDatatypeName(node.right)
 
         chosenType = None
-        if leftTypeName in self.externalFunctions and funcName in self.externalFunctions[leftTypeName]:
-            chosenType = leftTypeName
-        elif rightTypeName in self.externalFunctions and funcName in self.externalFunctions[rightTypeName]:
-            chosenType = rightTypeName
+        for candidate in (leftType, rightType):
+            if candidate in self.externalFunctions and funcName in self.externalFunctions[candidate]:
+                chosenType = candidate
+                break
 
         if not chosenType:
             return None
 
-        llvmFunc = self.externalFunctions[chosenType][funcName]
-
-        if leftTypeName != chosenType:
+        if leftType != chosenType:
             leftVal = self.convertValue(leftVal, leftVal.type, chosenType)
-        if rightTypeName != chosenType:
+        if rightType != chosenType:
             rightVal = self.convertValue(rightVal, rightVal.type, chosenType)
 
+        llvmFunc = self.externalFunctions[chosenType][funcName]
         return self.builder.call(llvmFunc, [leftVal, rightVal], name=f"{chosenType}_{funcName}_result") 
