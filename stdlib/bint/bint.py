@@ -6,14 +6,9 @@ typeRepresentation = ir.PointerType(ir.IntType(8))
 libraries = ["-lgmp", "-lgmpxx"]
 
 printConfig = {
-    "conversion_function": "to_string",
-    "format_specifier": "%s"
 }
 
 functions: Dict[str, Tuple[str, List[str]]] = {
-    "from_int": ("bint", ["int"]),
-    "from_string": ("bint", ["string"]),
-    
     "add": ("bint", ["bint", "bint"]),
     "sub": ("bint", ["bint", "bint"]),
     "mul": ("bint", ["bint", "bint"]),
@@ -38,50 +33,6 @@ functions: Dict[str, Tuple[str, List[str]]] = {
     "to_string": ("string", ["bint"]),
     
     "print": ("void", ["bint"])
-}
-
-constructors = {
-    "int": "from_int",
-    "string": "from_string"
-}
-
-mapping: Dict[str, str] = {
-    "from_int": "bint_from_int",
-    "from_string": "bint_from_string",
-    
-    "add": "bint_add",
-    "sub": "bint_sub",
-    "mul": "bint_mul",
-    "div": "bint_div",
-    "mod": "bint_mod",
-    
-    "eq": "bint_eq",
-    "ne": "bint_ne",
-    "lt": "bint_lt",
-    "le": "bint_le",
-    "gt": "bint_gt",
-    "ge": "bint_ge",
-    
-    "and": "bint_and",
-    "or": "bint_or",
-    "xor": "bint_xor",
-    "not": "bint_not",
-    "lshift": "bint_lshift",
-    "rshift": "bint_rshift",
-    
-    "to_int": "bint_to_int",
-    "to_string": "bint_to_string",
-    
-    "print": "bint_print"
-}
-
-# Auto-conversion from int literals to bint
-typeConversion = {
-    "from_int": {
-        "source_type": "int",
-        "target_type": "bint",
-        "function": "from_int"
-    }
 }
 
 def registerWithCodegen(codegen):

@@ -133,8 +133,36 @@ class Compiler:
             if hasattr(module, 'datatype'):
                 typeName = module.datatype
 
+                stdlibInfo = self.stdlibModules[moduleName]
+                functionsDict = stdlibInfo['functions']
+                mappingDict = stdlibInfo['mapping']
+
+                def ensureConstructor(constructorName, sourceTypeName):
+                    if constructorName not in functionsDict:
+                        functionsDict[constructorName] = (typeName, [sourceTypeName])
+                    if constructorName not in mappingDict:
+                        mappingDict[constructorName] = f"{moduleName}_{constructorName}"
+
+                    if not hasattr(module, 'typeConversion'):
+                        module.typeConversion = {}
+                    if constructorName not in module.typeConversion:
+                        module.typeConversion[constructorName] = {
+                            'sourceType': sourceTypeName,
+                            'targetType': typeName,
+                            'function': constructorName
+                        }
+
+                ensureConstructor('from_int', 'int')
+                ensureConstructor('from_string', 'string')
+
+                for fn in list(functionsDict.keys()):
+                    if fn not in mappingDict:
+                        mappingDict[fn] = f"{moduleName}_{fn}"
+
                 if hasattr(module, 'type_representation'):
                     typeRepresentation = module.type_representation
+                elif hasattr(module, 'typeRepresentation'):
+                    typeRepresentation = module.typeRepresentation
                 else:
                     from llvmlite import ir
                     typeRepresentation = ir.PointerType(ir.IntType(8))

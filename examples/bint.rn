@@ -1,0 +1,9 @@
+import bint
+
+int main(){
+    bint a = 10;
+    bint b = 20;
+    bint c = a + b;
+    print(c);
+    return 0;
+}

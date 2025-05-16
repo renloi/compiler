@@ -157,16 +157,26 @@ class Codegen(ExpressionCodegen, StatementCodegen, DeclarationCodegen):
         if sourceType == self.datatypes.get(targetTypeName, None):
             return value
             
+        if targetTypeName in self.externalFunctions:
+            moduleFuncs = self.externalFunctions[targetTypeName]
+
+            if sourceType == ir.IntType(32) and 'from_int' in moduleFuncs:
+                convFunc = moduleFuncs['from_int']
+                return self.builder.call(convFunc, [value], name=f"{targetTypeName}FromInt")
+
+            if value.type.is_pointer and value.type.pointee == ir.IntType(8) and 'from_string' in moduleFuncs:
+                convFunc = moduleFuncs['from_string']
+                return self.builder.call(convFunc, [value], name=f"{targetTypeName}FromString")
+
         for moduleName in self.externalFunctions:
             try:
                 module = importlib.import_module(f"stdlib.{moduleName}.{moduleName}")
                 
-                if not hasattr(module, "type_conversion"):
-                    continue
-                    
-                for convName, convInfo in module.type_conversion.items():
-                    sourceTypeName = convInfo.get("source_type", "")
-                    convTargetType = convInfo.get("target_type", "")
+                convTable = getattr(module, 'typeConversion', getattr(module, 'type_conversion', {}))
+
+                for convName, convInfo in convTable.items():
+                    sourceTypeName = convInfo.get('sourceType', convInfo.get('source_type', ''))
+                    convTargetType = convInfo.get('targetType', convInfo.get('target_type', ''))
                     
                     if (convTargetType == targetTypeName and 
                         ((sourceTypeName == "int" and sourceType == ir.IntType(32)) or
@@ -174,7 +184,7 @@ class Codegen(ExpressionCodegen, StatementCodegen, DeclarationCodegen):
                          (sourceTypeName == "string" and value.type.is_pointer and value.type.pointee == ir.IntType(8)) or
                          (sourceTypeName in self.datatypes and sourceType == self.datatypes[sourceTypeName]))):
                         
-                        funcName = convInfo.get("function", "")
+                        funcName = convInfo.get('function', '')
                         if funcName in self.externalFunctions[moduleName]:
                             convFunc = self.externalFunctions[moduleName][funcName]
                             return self.builder.call(convFunc, [value], name=f"{targetTypeName}_conv")
