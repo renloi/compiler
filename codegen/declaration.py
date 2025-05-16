@@ -27,13 +27,7 @@ class DeclarationCodegen:
                     "size": numElements
                 }
 
-                for i in range(numElements):
-                    idx = ir.Constant(ir.IntType(32), i)
-                    srcPtr = self.elementPointer(arrayLiteral, idx, f"src_ptr_{i}")
-                    dstPtr = self.elementPointer(addr, idx, f"dst_ptr_{i}")
-                    
-                    val = self.builder.load(srcPtr, name=f"elem_{i}")
-                    self.builder.store(val, dstPtr)
+                self.emitArrayStore(addr, arrayLiteral, numElements)
 
                 return addr
             else:
@@ -108,14 +102,6 @@ class DeclarationCodegen:
         for method in node.methods:
             self.MethodDecl(method)
 
-    def createFunctionType(self, returnTypeName, paramTypes):
-        if returnTypeName in self.datatypes:
-            returnType = self.datatypes[returnTypeName]
-        else:
-            returnType = ir.IntType(32)
-            
-        return ir.FunctionType(returnType, paramTypes)
-            
     def MethodDecl(self, node):
         if node.className not in self.classStructTypes:
             raise ValueError("Unknown class in method: " + node.className)

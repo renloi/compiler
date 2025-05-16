@@ -65,7 +65,7 @@ class ExpressionCodegen:
                 if res is not None:
                     return res
 
-                constRes = self.callExternal(moduleName, functionName, [])
+                constRes = self.callExternal(moduleName, functionName, [], constant=True)
                 if constRes is not None:
                     return constRes
             obj = self.funcSymtab[node.callee.objectExpr.name]["addr"]
@@ -135,7 +135,7 @@ class ExpressionCodegen:
     def MemberAccess(self, node):
         objInfo = self.funcSymtab[node.objectExpr.name]
         idx = self.getMemberIndex(objInfo["datatypeName"], node.memberName)
-        ptr = self.builder.gep(objInfo["addr"], [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), idx)], name="memberPtr")
+        ptr = self.structFieldPointer(objInfo["addr"], idx, name="memberPointer")
         return self.builder.load(ptr, name=node.memberName)
 
     def Assign(self, node):
@@ -156,7 +156,7 @@ class ExpressionCodegen:
     def MemberAssignment(self, memberNode, val):
         objInfo = self.funcSymtab[memberNode.objectExpr.name]
         idx = self.getMemberIndex(objInfo["datatypeName"], memberNode.memberName)
-        ptr = self.builder.gep(objInfo["addr"], [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), idx)], name="memberPtr")
+        ptr = self.structFieldPointer(objInfo["addr"], idx, name="memberPointer")
 
         self.builder.store(val, ptr)
         return val
@@ -168,8 +168,8 @@ class ExpressionCodegen:
 
         idx = self.codegen(arrayAccessNode.index)
         self.checkArrayBounds(arrayInfo, idx)
-        elemPtr = self.elementPointer(arrayInfo, idx)
-        self.builder.store(val, elemPtr)
+        elemPointer = self.elementPointer(arrayInfo, idx)
+        self.builder.store(val, elemPointer)
         return val
 
     def ArrayAccess(self, node):
@@ -179,8 +179,8 @@ class ExpressionCodegen:
 
         idx = self.codegen(node.index)
         self.checkArrayBounds(arrayInfo, idx)
-        elemPtr = self.elementPointer(arrayInfo, idx)
-        return self.builder.load(elemPtr, name="elem_value")
+        elemPointer = self.elementPointer(arrayInfo, idx)
+        return self.builder.load(elemPointer, name="elementValue")
 
     def NewExpr(self, node):
         if node.className not in self.classStructTypes:
@@ -205,11 +205,8 @@ class ExpressionCodegen:
                 if elemType == ir.FloatType() and elemValue.type == ir.IntType(32):
                     elemValue = self.builder.sitofp(elemValue, ir.FloatType())
 
-            elemPtr = self.builder.gep(array, [
-                ir.Constant(ir.IntType(32), 0),
-                ir.Constant(ir.IntType(32), i)
-            ], name=f"elem_ptr_{i}")
-            self.builder.store(elemValue, elemPtr)
+            elemPointer = self.elementPointer(array, ir.Constant(ir.IntType(32), i), name=f"element_pointer_{i}")
+            self.builder.store(elemValue, elemPointer)
 
         return array 
 

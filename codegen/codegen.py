@@ -199,15 +199,14 @@ class Codegen(ExpressionCodegen, StatementCodegen, DeclarationCodegen):
         """Return the registered LLVM Function wrapper for a constant or None."""
         return self.externalConstants.get(moduleName, {}).get(constName)
 
-    def callExternal(self, moduleName, funcName, args=None):
-        """If the function exists, emit a call and return the value; else None."""
-        func = self.externalFunction(moduleName, funcName)
+    def callExternal(self, moduleName, funcName, args=None, constant=False):
+        store = self.externalConstants if constant else self.externalFunctions
+        func = store.get(moduleName, {}).get(funcName)
         if func is None:
             return None
         return self.builder.call(func, args or [])
 
-    def elementPointer(self, arrayInfoOrAddr, idx, name="elem_ptr"):
-
+    def elementPointer(self, arrayInfoOrAddr, idx, name="elem_pointer"):
         if isinstance(arrayInfoOrAddr, dict):
             arrayInfo = arrayInfoOrAddr
             arrayAddr = arrayInfo["addr"]
@@ -220,9 +219,18 @@ class Codegen(ExpressionCodegen, StatementCodegen, DeclarationCodegen):
 
         return self.builder.gep(arrayInfoOrAddr, [ir.Constant(ir.IntType(32), 0), idx], name=name)
 
+    def structFieldPointer(self, structPointer, fieldIndex, name="field_pointer"):
+        return self.builder.gep(structPointer, [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), fieldIndex)], name=name)
+
+    def emitArrayStore(self, dstArr, srcArr, nElems):
+        for i in range(nElems):
+            idxConst = ir.Constant(ir.IntType(32), i)
+            srcPointer = self.elementPointer(srcArr, idxConst, f"src_{i}")
+            dstPointer = self.elementPointer(dstArr, idxConst, f"dst_{i}")
+            value = self.builder.load(srcPointer, name=f"load_{i}")
+            self.builder.store(value, dstPointer)
+
     def checkArrayBounds(self, arrayInfo, idx):
-        """Emit bounds-check IR if size is known at compile time."""
-        from llvmlite import ir as ir
         if isinstance(idx, ir.Constant):
             if "size" in arrayInfo and int(idx.constant) >= arrayInfo["size"]:
                 raise IndexError(f"Array index {idx.constant} out of bounds for array of size {arrayInfo['size']}")
