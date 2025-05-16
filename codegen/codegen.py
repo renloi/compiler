@@ -204,4 +204,30 @@ class Codegen(ExpressionCodegen, StatementCodegen, DeclarationCodegen):
         func = self.externalFunction(moduleName, funcName)
         if func is None:
             return None
-        return self.builder.call(func, args or []) 
+        return self.builder.call(func, args or [])
+
+    def elementPointer(self, arrayInfoOrAddr, idx, name="elem_ptr"):
+
+        if isinstance(arrayInfoOrAddr, dict):
+            arrayInfo = arrayInfoOrAddr
+            arrayAddr = arrayInfo["addr"]
+
+            if "isArray" in arrayInfo and "sizeVar" in arrayInfo:
+                arrayPtr = self.builder.load(arrayAddr, name="array_ptr")
+                return self.builder.gep(arrayPtr, [idx], name=name)
+
+            return self.builder.gep(arrayAddr, [ir.Constant(ir.IntType(32), 0), idx], name=name)
+
+        return self.builder.gep(arrayInfoOrAddr, [ir.Constant(ir.IntType(32), 0), idx], name=name)
+
+    def checkArrayBounds(self, arrayInfo, idx):
+        """Emit bounds-check IR if size is known at compile time."""
+        from llvmlite import ir as ir
+        if isinstance(idx, ir.Constant):
+            if "size" in arrayInfo and int(idx.constant) >= arrayInfo["size"]:
+                raise IndexError(f"Array index {idx.constant} out of bounds for array of size {arrayInfo['size']}")
+        elif "size" in arrayInfo:
+            sizeConst = ir.Constant(ir.IntType(32), arrayInfo["size"])
+            isValid = self.builder.icmp_signed("<", idx, sizeConst, name="bounds_check")
+            with self.builder.if_then(isValid, likely=True):
+                pass 

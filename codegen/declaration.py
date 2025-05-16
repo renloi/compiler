@@ -9,12 +9,6 @@ class DeclarationCodegen:
         else:
             raise ValueError("Unknown datatype: " + typeName)
     
-    def handleArrayElementPtr(self, arrayAddr, index, name=""):
-        return self.builder.gep(arrayAddr, [
-            ir.Constant(ir.IntType(32), 0),
-            index
-        ], name=name)
-    
     def VarDecl(self, node):
         if node.datatypeName.endswith("[]"):
             baseTypeName = node.datatypeName[:-2]
@@ -35,8 +29,8 @@ class DeclarationCodegen:
 
                 for i in range(numElements):
                     idx = ir.Constant(ir.IntType(32), i)
-                    srcPtr = self.handleArrayElementPtr(arrayLiteral, idx, f"src_ptr_{i}")
-                    dstPtr = self.handleArrayElementPtr(addr, idx, f"dst_ptr_{i}")
+                    srcPtr = self.elementPointer(arrayLiteral, idx, f"src_ptr_{i}")
+                    dstPtr = self.elementPointer(addr, idx, f"dst_ptr_{i}")
                     
                     val = self.builder.load(srcPtr, name=f"elem_{i}")
                     self.builder.store(val, dstPtr)

@@ -161,29 +161,6 @@ class ExpressionCodegen:
         self.builder.store(val, ptr)
         return val
 
-    def getArrayElementPtr(self, arrayInfo, idx):
-        arrayAddr = arrayInfo["addr"]
-        
-        if "isArray" in arrayInfo and "sizeVar" in arrayInfo:
-            arrayPtr = self.builder.load(arrayAddr, name="array_ptr")
-            return self.builder.gep(arrayPtr, [idx], name="elem_ptr")
-        else:
-            return self.builder.gep(arrayAddr, [
-                ir.Constant(ir.IntType(32), 0),
-                idx
-            ], name="elem_ptr")
-
-    def checkArrayBounds(self, arrayInfo, idx):
-        if isinstance(idx, ir.Constant):
-            if "size" in arrayInfo and int(idx.constant) >= arrayInfo["size"]:
-                raise IndexError(f"Array index {idx.constant} out of bounds for array of size {arrayInfo['size']}")
-        else:
-            if "size" in arrayInfo:
-                size = ir.Constant(ir.IntType(32), arrayInfo["size"])
-                isValid = self.builder.icmp_signed("<", idx, size, name="bounds_check")
-                with self.builder.if_then(isValid, likely=True):
-                    pass
-
     def ArrayElementAssignment(self, arrayAccessNode, val):
         arrayInfo = self.funcSymtab.get(arrayAccessNode.array.name)
         if not arrayInfo:
@@ -191,7 +168,7 @@ class ExpressionCodegen:
 
         idx = self.codegen(arrayAccessNode.index)
         self.checkArrayBounds(arrayInfo, idx)
-        elemPtr = self.getArrayElementPtr(arrayInfo, idx)
+        elemPtr = self.elementPointer(arrayInfo, idx)
         self.builder.store(val, elemPtr)
         return val
 
@@ -202,7 +179,7 @@ class ExpressionCodegen:
 
         idx = self.codegen(node.index)
         self.checkArrayBounds(arrayInfo, idx)
-        elemPtr = self.getArrayElementPtr(arrayInfo, idx)
+        elemPtr = self.elementPointer(arrayInfo, idx)
         return self.builder.load(elemPtr, name="elem_value")
 
     def NewExpr(self, node):
