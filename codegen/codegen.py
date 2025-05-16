@@ -23,6 +23,12 @@ class Codegen(ExpressionCodegen, StatementCodegen, DeclarationCodegen):
         self.modules = {}
         self.opFuncMap = {op: vals[0] for op, vals in self.binOpMap.items()}
 
+        self.printSpec = {
+            ir.FloatType(): '%f',
+            ir.IntType(32): '%d',
+            ir.IntType(8):  '%c'
+        }
+
     def initModule(self, moduleName):
         if moduleName not in self.modules:
             self.modules[moduleName] = {}
@@ -239,3 +245,15 @@ class Codegen(ExpressionCodegen, StatementCodegen, DeclarationCodegen):
             isValid = self.builder.icmp_signed("<", idx, sizeConst, name="bounds_check")
             with self.builder.if_then(isValid, likely=True):
                 pass 
+
+    def preparePrintArg(self, value):
+        valueType = value.type
+        for moduleName, funcTable in self.externalFunctions.items():
+            if valueType == self.datatypes.get(moduleName, None) and 'print' in funcTable:
+                self.builder.call(funcTable['print'], [value])
+                return True, None, None
+
+        if valueType == ir.FloatType():
+            value = self.builder.fpext(value, ir.DoubleType())
+        spec = self.printSpec.get(valueType, '%s' if valueType.is_pointer else '%p')
+        return False, spec, value 

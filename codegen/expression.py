@@ -86,34 +86,15 @@ class ExpressionCodegen:
             raise SyntaxError("Invalid function call callee.")
 
     def formatPrintValue(self, val, i, args, fmtParts, llvmArgs):
-        directlyPrinted = False
-        
-        valType = val.type
-        for moduleName in self.externalFunctions:
-            if valType == self.datatypes.get(moduleName, None):
-                if self.callExternal(moduleName, "print", [val]):
-                    directlyPrinted = True
-                    if i < len(args) - 1:
-                        fmtStr = self.createStringConstant(" ")
-                        self.builder.call(self.printFunc, [fmtStr], name="print_space")
-                    break
-                
-        if directlyPrinted:
+        printed, spec, llvmVal = self.preparePrintArg(val)
+        if printed:
+            if i < len(args) - 1:
+                spaceStr = self.createStringConstant(" ")
+                self.builder.call(self.printFunc, [spaceStr])
             return True
-                
-        if valType == ir.FloatType():
-            val = self.builder.fpext(val, ir.DoubleType(), name="promoted")
-            fmtParts.append("%f")
-        elif valType == ir.IntType(32):
-            fmtParts.append("%d")
-        elif valType == ir.IntType(8):
-            fmtParts.append("%c")
-        elif valType.is_pointer and valType.pointee == ir.IntType(8):
-            fmtParts.append("%s")
-        else:
-            fmtParts.append("%p")
-            
-        llvmArgs.append(val)
+
+        fmtParts.append(spec)
+        llvmArgs.append(llvmVal)
         return False
 
     def PrintCall(self, node):
