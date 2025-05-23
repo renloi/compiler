@@ -8,6 +8,7 @@ from parser import Parser
 from codegen import Codegen
 from llvmlite import binding as llvm
 from lang import language
+import argparse
 
 def processImports(filePath, processedFiles=None):
     if processedFiles is None:
@@ -276,43 +277,34 @@ class Compiler:
                 moduleName = os.path.basename(moduleDir)
                 self.cleanModule(moduleName)
 
-def printUsage():
-    print("Usage: python compiler.py [OPTIONS] <sourceFile>")
-    print("OPTIONS:")
-    print("\t-o             Sets the output file")
-    print("\t-clean         Clean generated files for stdlib modules")
-    print("\t-clean <module> Clean generated files for specific module")
-    print("\t-h             Help page")
-    sys.exit(1)
+
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        printUsage()
+    argparser = argparse.ArgumentParser(prog='renloi', description='compiler for the renloi language')
 
-    if sys.argv[1] == '-clean':
+    argparser.add_argument('-clean', help='Clean generated files for stdlib modules', default=False, action='store_true')
+    argparser.add_argument('-clean-module', help='Clean generated files for specific module')
+    argparser.add_argument('-o', help='Sets the output file', nargs=1, dest='output')
+    argparser.add_argument('input', nargs='+')
+    
+
+    args = argparser.parse_args(sys.argv[1:])
+
+    if args.clean or args.clean_module != None:
         compiler = Compiler()
-        if len(sys.argv) > 2 and not sys.argv[2].startswith('-'):
-
-            compiler.cleanModule(sys.argv[2])
+        if args.clean_module != None:
+            compiler.cleanModule(args.clean_module)
         else:
-
             compiler.cleanAllModules()
         sys.exit(0)
-
-    sourceFile = sys.argv[1]
-    if sourceFile  == '-o':
-        if len(sys.argv) < 4:
-            printUsage()
-        sourceFile = sys.argv[3]
-    elif sourceFile == '-h':
-        printUsage()
+    
+    sourceFile = args.input[0]
 
     finalContent, stdlibImports = processImports(sourceFile)
 
     baseFilename = os.path.splitext(sourceFile)[0]
     outputExe = baseFilename + ".exe"
-    if len(sys.argv) > 2:
-        if '-o' in sys.argv:
-            outputExe = sys.argv[sys.argv.index('-o')+1]
+    if args.output != None:
+        outputExe = args.output[0]
     compiler = Compiler()
     compiler.compileSource(finalContent, outputExe, stdlibImports)
