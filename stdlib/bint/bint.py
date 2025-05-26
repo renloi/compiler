@@ -1,5 +1,5 @@
 from llvmlite import ir
-from stdlib.utils import Module
+from stdlib.module import Module
 
 module = Module(
     name="bint",

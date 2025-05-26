@@ -1,4 +1,4 @@
-from stdlib.utils import Module
+from stdlib.module import Module
 
 module = Module(name="math")
 
